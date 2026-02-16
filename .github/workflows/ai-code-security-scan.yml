@@ -1,93 +1,152 @@
-name: AI Code Security & Quality Scan
+name: "🛡️ AI Security Scanner"
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, master, develop]
   pull_request:
-    branches: [main, develop]
+    branches: [main, master, develop]
   schedule:
-    - cron: '0 2 * * 1'  # Weekly on Monday 2 AM
+    - cron: '0 2 * * *'  # Daily at 2 AM
+  workflow_dispatch:
 
 permissions:
   contents: read
-  security-events: write
   issues: write
+  security-events: write
+
+env:
+  PYTHON_VERSION: '3.11'
 
 jobs:
-  scan:
+  security-scan:
+    name: "Security Analysis"
     runs-on: ubuntu-latest
+    
     steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    
-    - name: Find Python files
-      id: files
-      run: |
-        FILES=$(find . -name "*.py" -not -path "./.git/*" | head -n 20)
-        echo "python_files<<EOF" >> $GITHUB_OUTPUT
-        echo "$FILES" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
-    
-    - name: Get file contents
-      id: contents
-      run: |
-        CONTENT=""
-        for file in ${{ steps.files.outputs.python_files }}; do
-          CONTENT="$CONTENT\n\n### File: $file\n\`\`\`python\n$(cat $file | head -c 5000)\n\`\`\`"
-        done
-        echo "file_contents<<EOF" >> $GITHUB_OUTPUT
-        echo "$CONTENT" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
-    
-    - name: AI Security Analysis
-      id: security_scan
-      uses: ./.github/workflows/00-ai-orchestrator-reusable.yml
-      with:
-        task_type: "security_scan"
-        system_message: |
-          You are a security expert analyzing code for vulnerabilities. Focus on:
-          1. SQL injection risks
-          2. Command injection
-          3. Path traversal
-          4. Insecure deserialization
-          5. Hardcoded secrets
-          6. Weak cryptography
-          7. Authentication/Authorization issues
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v4
+      
+      - name: "🐍 Setup Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: "📦 Install Dependencies"
+        run: |
+          pip install --upgrade pip
+          pip install requests pyyaml python-dateutil bandit safety
+      
+      - name: "🔍 Run Static Security Analysis"
+        id: security_tools
+        continue-on-error: true
+        run: |
+          echo "Running Bandit security scanner..."
+          bandit -r . -f json -o bandit_report.json || true
           
-          Provide specific file:line references and severity levels.
-        user_prompt: |
-          Scan these Python files for security vulnerabilities:
+          echo "Running Safety dependency checker..."
+          safety check --json > safety_report.json || true
           
-          ${{ steps.contents.outputs.file_contents }}
-        max_tokens: 4000
-        temperature: 0.2
-    
-    - name: Create security issue if problems found
-      uses: actions/github-script@v7
-      if: steps.security_scan.outputs.success == 'true' && contains(steps.security_scan.outputs.response, 'CRITICAL') || contains(steps.security_scan.outputs.response, 'HIGH')
-      with:
-        script: |
-          const title = '🔒 Security Scan: Issues Detected';
-          const body = `## Security Analysis Report
+          echo "✅ Security tools completed"
+      
+      - name: "🤖 AI Security Analysis with 15-Tier Fallback"
+        env:
+          GROQAI_API_KEY: ${{ secrets.GROQAI_API_KEY }}
+          GROQ2_API_KEY: ${{ secrets.GROQ2_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINIAI_API_KEY: ${{ secrets.GEMINIAI_API_KEY }}
+          GEMINI2_API_KEY: ${{ secrets.GEMINI2_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          CODESTRAL_API_KEY: ${{ secrets.CODESTRAL_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          CHUTES_API_KEY: ${{ secrets.CHUTES_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+          GPTOSS_API_KEY: ${{ secrets.GPTOSS_API_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+        run: |
+          python3 <<'PYTHON_SCRIPT'
+          import sys
+          import os
+          import json
+          sys.path.insert(0, '.github/scripts')
+          from ai_api_fallback import ai_call
           
-          **Scanned**: ${new Date().toISOString()}
-          **Provider**: ${{ steps.security_scan.outputs.provider }}
-          **Analysis time**: ${{ steps.security_scan.outputs.duration_ms }}ms
+          # Read security reports
+          bandit_report = ""
+          safety_report = ""
           
-          ---
+          try:
+              with open('bandit_report.json', 'r') as f:
+                  bandit_data = json.load(f)
+                  bandit_report = json.dumps(bandit_data, indent=2)
+          except:
+              bandit_report = "No Bandit report available"
           
-          ${{ steps.security_scan.outputs.response }}
+          try:
+              with open('safety_report.json', 'r') as f:
+                  safety_data = json.load(f)
+                  safety_report = json.dumps(safety_data, indent=2)
+          except:
+              safety_report = "No Safety report available"
           
-          ---
+          system_prompt = """
+          You are a cybersecurity expert analyzing code for vulnerabilities.
           
-          *Automated security scan. Please review and address high-priority issues.*
-          `;
+          Review the security scan results and provide:
+          1. **Critical Issues**: Immediate security threats (severity: CRITICAL/HIGH)
+          2. **Medium Priority**: Security concerns requiring attention
+          3. **Best Practices**: Security improvements
+          4. **Recommendations**: Specific fixes with code examples
+          5. **Summary**: Overall security posture (score 0-100)
           
-          await github.rest.issues.create({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            title: title,
-            body: body,
-            labels: ['security', 'automated']
-          });
+          Be specific, actionable, and prioritize by severity.
+          """
+          
+          user_prompt = f"""
+          Security Scan Analysis Request:
+          
+          Bandit Report:
+          ```json
+          {bandit_report[:3000]}
+          ```
+          
+          Safety Report:
+          ```json
+          {safety_report[:2000]}
+          ```
+          
+          Please analyze these security findings and provide recommendations.
+          """
+          
+          try:
+              response = ai_call(user_prompt, system_prompt, max_tokens=2000, temperature=0.2, task_type="security_analysis")
+              
+              print("\n" + "="*80)
+              print("🛡️ AI SECURITY ANALYSIS COMPLETE")
+              print("="*80)
+              print(response)
+              print("="*80)
+              
+              with open('security_analysis.txt', 'w') as f:
+                  f.write(response)
+              
+              print("\n✅ Security analysis generated")
+              
+          except Exception as e:
+              print(f"❌ Security analysis failed: {e}")
+              sys.exit(1)
+          PYTHON_SCRIPT
+      
+      - name: "📤 Upload Security Reports"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-${{ github.run_number }}
+          path: |
+            bandit_report.json
+            safety_report.json
+            security_analysis.txt
+          retention-days: 90
