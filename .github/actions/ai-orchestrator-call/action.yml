@@ -1,0 +1,54 @@
+name: 'AI Orchestrator Call'
+description: 'Call the AI orchestrator with fallback support across 15+ APIs'
+author: 'over7-maker'
+
+inputs:
+  task_type:
+    description: 'Type of AI task (analysis, security, quality, etc.)'
+    required: true
+  context:
+    description: 'Context or prompt for the AI'
+    required: true
+  max_tokens:
+    description: 'Maximum tokens for response'
+    required: false
+    default: '2000'
+
+outputs:
+  success:
+    description: 'Whether the call succeeded'
+    value: ${{ steps.call.outputs.success }}
+  response:
+    description: 'AI response content'
+    value: ${{ steps.call.outputs.response }}
+  provider:
+    description: 'Which API provider was used'
+    value: ${{ steps.call.outputs.provider }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Call AI Orchestrator
+      id: call
+      shell: bash
+      env:
+        CEREBRAS_API_KEY: ${{ env.CEREBRAS_API_KEY }}
+        CODESTRAL_API_KEY: ${{ env.CODESTRAL_API_KEY }}
+        DEEPSEEK_API_KEY: ${{ env.DEEPSEEK_API_KEY }}
+        GEMINIAI_API_KEY: ${{ env.GEMINIAI_API_KEY }}
+        GLM_API_KEY: ${{ env.GLM_API_KEY }}
+        GPTOSS_API_KEY: ${{ env.GPTOSS_API_KEY }}
+        GROK_API_KEY: ${{ env.GROK_API_KEY }}
+        GROQAI_API_KEY: ${{ env.GROQAI_API_KEY }}
+        KIMI_API_KEY: ${{ env.KIMI_API_KEY }}
+        NVIDIA_API_KEY: ${{ env.NVIDIA_API_KEY }}
+        QWEN_API_KEY: ${{ env.QWEN_API_KEY }}
+        GEMINI2_API_KEY: ${{ env.GEMINI2_API_KEY }}
+        GROQ2_API_KEY: ${{ env.GROQ2_API_KEY }}
+        COHERE_API_KEY: ${{ env.COHERE_API_KEY }}
+        CHUTES_API_KEY: ${{ env.CHUTES_API_KEY }}
+      run: |
+        python .github/scripts/universal_ai_orchestrator.py \
+          --task-type "${{ inputs.task_type }}" \
+          --context "${{ inputs.context }}" \
+          --max-tokens ${{ inputs.max_tokens }}

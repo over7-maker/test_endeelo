@@ -1,153 +1,42 @@
-name: "🛡️ AI Security Scanner"
+name: AI Code Security Scan
 
 on:
-  push:
-    branches: [main, master, develop]
   pull_request:
-    branches: [main, master, develop]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main, develop]
   schedule:
-    - cron: '0 2 * * *'  # Daily at 2 AM
+    - cron: '0 2 * * 1'  # Weekly on Monday 2 AM
   workflow_dispatch:
-
-permissions:
-  contents: read
-  issues: write
-  security-events: write
-
-env:
-  PYTHON_VERSION: '3.11'
 
 jobs:
   security-scan:
-    name: "Security Analysis"
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
     steps:
-      - name: "📥 Checkout Repository"
+      - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: "🐍 Setup Python"
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-      
-      - name: "📦 Install Dependencies"
+          python-version: '3.11'
+
+      - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install bandit safety
-      
-      - name: "🔍 Run Static Security Analysis"
-        id: security_tools
-        continue-on-error: true
-        run: |
-          echo "Running Bandit security scanner..."
-          bandit -r . -f json -o bandit_report.json || true
-          
-          echo "Running Safety dependency checker..."
-          safety check --json > safety_report.json || true
-          
-          echo "✅ Security tools completed"
-      
-      - name: "🤖 AI Security Analysis with 15-Tier Fallback"
+          python -m pip install --upgrade pip
+          pip install bandit safety semgrep pyyaml
+
+      - name: Run security scan
         env:
-          GROQAI_API_KEY: ${{ secrets.GROQAI_API_KEY }}
-          GROQ2_API_KEY: ${{ secrets.GROQ2_API_KEY }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          GEMINIAI_API_KEY: ${{ secrets.GEMINIAI_API_KEY }}
-          GEMINI2_API_KEY: ${{ secrets.GEMINI2_API_KEY }}
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-          CODESTRAL_API_KEY: ${{ secrets.CODESTRAL_API_KEY }}
-          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-          CHUTES_API_KEY: ${{ secrets.CHUTES_API_KEY }}
-          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
-          QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
-          GPTOSS_API_KEY: ${{ secrets.GPTOSS_API_KEY }}
-          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
-          GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          python3 <<'PYTHON_SCRIPT'
-          import sys
-          import os
-          import json
-          sys.path.insert(0, '.github/scripts')
-          from ai_api_fallback import ai_call
-          
-          # Read security reports
-          bandit_report = ""
-          safety_report = ""
-          
-          try:
-              with open('bandit_report.json', 'r') as f:
-                  bandit_data = json.load(f)
-                  bandit_report = json.dumps(bandit_data, indent=2)
-          except:
-              bandit_report = "No Bandit report available"
-          
-          try:
-              with open('safety_report.json', 'r') as f:
-                  safety_data = json.load(f)
-                  safety_report = json.dumps(safety_data, indent=2)
-          except:
-              safety_report = "No Safety report available"
-          
-          system_prompt = """
-          You are a cybersecurity expert analyzing code for vulnerabilities.
-          
-          Review the security scan results and provide:
-          1. **Critical Issues**: Immediate security threats (severity: CRITICAL/HIGH)
-          2. **Medium Priority**: Security concerns requiring attention
-          3. **Best Practices**: Security improvements
-          4. **Recommendations**: Specific fixes with code examples
-          5. **Summary**: Overall security posture (score 0-100)
-          
-          Be specific, actionable, and prioritize by severity.
-          """
-          
-          user_prompt = f"""
-          Security Scan Analysis Request:
-          
-          Bandit Report:
-          ```json
-          {bandit_report[:3000]}
-          ```
-          
-          Safety Report:
-          ```json
-          {safety_report[:2000]}
-          ```
-          
-          Please analyze these security findings and provide recommendations.
-          """
-          
-          try:
-              response = ai_call(user_prompt, system_prompt, max_tokens=2000, temperature=0.2, task_type="security_analysis")
-              
-              print("\n" + "="*80)
-              print("🛡️ AI SECURITY ANALYSIS COMPLETE")
-              print("="*80)
-              print(response)
-              print("="*80)
-              
-              with open('security_analysis.txt', 'w') as f:
-                  f.write(response)
-              
-              print("\n✅ Security analysis generated")
-              
-          except Exception as e:
-              print(f"❌ Security analysis failed: {e}")
-              sys.exit(1)
-          PYTHON_SCRIPT
-      
-      - name: "📤 Upload Security Reports"
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: security-scan-${{ github.run_number }}
-          path: |
-            bandit_report.json
-            safety_report.json
-            security_analysis.txt
-          retention-days: 90
+          python .github/scripts/run_security_scan.py
