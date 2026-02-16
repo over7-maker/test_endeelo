@@ -1,0 +1,569 @@
+name: "00 - Zero-Failure Master Orchestrator"
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Orchestration Mode'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - analysis
+          - security
+          - quality
+      priority:
+        description: 'Priority Level'
+        required: false
+        default: 'normal'
+        type: choice
+        options:
+          - low
+          - normal
+          - high
+          - critical
+
+env:
+  PYTHON_VERSION: '3.11'
+  ORCHESTRATOR_VERSION: 'v2.0.0'
+
+jobs:
+  initialize:
+    name: "🚀 Initialize Orchestration"
+    runs-on: ubuntu-latest
+    outputs:
+      run_id: ${{ steps.setup.outputs.run_id }}
+      timestamp: ${{ steps.setup.outputs.timestamp }}
+      mode: ${{ steps.setup.outputs.mode }}
+      workflows_to_run: ${{ steps.plan.outputs.workflows }}
+    
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: "🐍 Setup Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: "📦 Install Dependencies"
+        run: |
+          pip install --upgrade pip
+          pip install requests pyyaml python-dateutil
+      
+      - name: "⚙️ Setup Orchestration"
+        id: setup
+        run: |
+          RUN_ID="orchestration-$(date +%Y%m%d-%H%M%S)"
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          MODE="${{ github.event.inputs.mode || 'full' }}"
+          
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "mode=$MODE" >> $GITHUB_OUTPUT
+          
+          echo "🆔 Run ID: $RUN_ID"
+          echo "⏰ Timestamp: $TIMESTAMP"
+          echo "🎯 Mode: $MODE"
+      
+      - name: "📋 Plan Workflow Execution"
+        id: plan
+        run: |
+          MODE="${{ steps.setup.outputs.mode }}"
+          
+          case "$MODE" in
+            full)
+              WORKFLOWS='["01-project-analyzer", "02-issue-responder", "03-pr-analyzer", "04-code-quality", "05-security-scanner", "06-documentation"]'
+              ;;
+            analysis)
+              WORKFLOWS='["01-project-analyzer", "03-pr-analyzer"]'
+              ;;
+            security)
+              WORKFLOWS='["05-security-scanner"]'
+              ;;
+            quality)
+              WORKFLOWS='["04-code-quality"]'
+              ;;
+            *)
+              WORKFLOWS='["01-project-analyzer"]'
+              ;;
+          esac
+          
+          echo "workflows=$WORKFLOWS" >> $GITHUB_OUTPUT
+          echo "📋 Planned workflows: $WORKFLOWS"
+      
+      - name: "💾 Create Orchestration Metadata"
+        run: |
+          mkdir -p artifacts/orchestration
+          
+          cat > artifacts/orchestration/metadata.json <<EOF
+          {
+            "run_id": "${{ steps.setup.outputs.run_id }}",
+            "timestamp": "${{ steps.setup.outputs.timestamp }}",
+            "mode": "${{ steps.setup.outputs.mode }}",
+            "priority": "${{ github.event.inputs.priority || 'normal' }}",
+            "trigger": "${{ github.event_name }}",
+            "ref": "${{ github.ref }}",
+            "sha": "${{ github.sha }}",
+            "actor": "${{ github.actor }}",
+            "workflows_planned": ${{ steps.plan.outputs.workflows }}
+          }
+          EOF
+          
+          cat artifacts/orchestration/metadata.json
+      
+      - name: "📤 Upload Metadata"
+        uses: actions/upload-artifact@v4
+        with:
+          name: orchestration-metadata
+          path: artifacts/orchestration/
+          retention-days: 90
+
+  project-analysis:
+    name: "📊 Project Analysis"
+    needs: initialize
+    if: contains(needs.initialize.outputs.workflows_to_run, '01-project-analyzer')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: "📥 Checkout"
+        uses: actions/checkout@v4
+      
+      - name: "🐍 Setup Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: "📦 Install Dependencies"
+        run: |
+          pip install requests pyyaml
+      
+      - name: "🤖 AI Project Analysis"
+        env:
+          GROQAI_API_KEY: ${{ secrets.GROQAI_API_KEY }}
+          GROQ2_API_KEY: ${{ secrets.GROQ2_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINIAI_API_KEY: ${{ secrets.GEMINIAI_API_KEY }}
+          GEMINI2_API_KEY: ${{ secrets.GEMINI2_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          CODESTRAL_API_KEY: ${{ secrets.CODESTRAL_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          CHUTES_API_KEY: ${{ secrets.CHUTES_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+          GPTOSS_API_KEY: ${{ secrets.GPTOSS_API_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+        run: |
+          python .github/scripts/ai_api_fallback.py
+          
+          python3 <<'PYTHON_SCRIPT'
+          import sys
+          sys.path.insert(0, '.github/scripts')
+          from ai_api_fallback import ai_call
+          
+          # Analyze project structure
+          prompt = """
+          Analyze this GitHub repository structure and provide:
+          1. Project health score (0-100)
+          2. Key strengths (3-5 points)
+          3. Areas for improvement (3-5 points)
+          4. Security considerations
+          5. Performance optimization opportunities
+          
+          Be specific and actionable.
+          """
+          
+          system_prompt = "You are an expert DevOps and software architecture analyst."
+          
+          try:
+              analysis = ai_call(prompt, system_prompt, max_tokens=3000, task_type="analysis")
+              
+              print("\n" + "="*80)
+              print("📊 PROJECT ANALYSIS")
+              print("="*80)
+              print(analysis)
+              
+              # Save to file
+              with open('project_analysis.md', 'w') as f:
+                  f.write(f"# Project Analysis\n\n{analysis}\n")
+              
+              print("\n✅ Analysis complete and saved")
+          except Exception as e:
+              print(f"❌ Analysis failed: {e}")
+              sys.exit(1)
+          PYTHON_SCRIPT
+      
+      - name: "📤 Upload Analysis"
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-analysis
+          path: project_analysis.md
+          retention-days: 90
+
+  code-quality:
+    name: "✨ Code Quality Analysis"
+    needs: initialize
+    if: contains(needs.initialize.outputs.workflows_to_run, '04-code-quality')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: "📥 Checkout"
+        uses: actions/checkout@v4
+      
+      - name: "🐍 Setup Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: "📦 Install Quality Tools"
+        run: |
+          pip install pylint flake8 black isort mypy bandit safety
+          pip install requests
+      
+      - name: "🔍 Run Quality Checks"
+        continue-on-error: true
+        run: |
+          # Find Python files
+          PYTHON_FILES=$(find . -name "*.py" -not -path "*/\.*" | head -20)
+          
+          echo "📁 Found Python files:"
+          echo "$PYTHON_FILES"
+          
+          # Run checks
+          echo "Running pylint..."
+          pylint $PYTHON_FILES > pylint_report.txt 2>&1 || true
+          
+          echo "Running flake8..."
+          flake8 $PYTHON_FILES > flake8_report.txt 2>&1 || true
+          
+          echo "Running bandit..."
+          bandit -r . -f json -o bandit_report.json 2>&1 || true
+      
+      - name: "🤖 AI Quality Analysis"
+        env:
+          GROQAI_API_KEY: ${{ secrets.GROQAI_API_KEY }}
+          GROQ2_API_KEY: ${{ secrets.GROQ2_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINIAI_API_KEY: ${{ secrets.GEMINIAI_API_KEY }}
+          GEMINI2_API_KEY: ${{ secrets.GEMINI2_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          CODESTRAL_API_KEY: ${{ secrets.CODESTRAL_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          CHUTES_API_KEY: ${{ secrets.CHUTES_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+          GPTOSS_API_KEY: ${{ secrets.GPTOSS_API_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+        run: |
+          python3 <<'PYTHON_SCRIPT'
+          import sys
+          sys.path.insert(0, '.github/scripts')
+          from ai_api_fallback import ai_call
+          
+          # Read reports
+          reports = []
+          
+          try:
+              with open('pylint_report.txt', 'r') as f:
+                  reports.append(f"Pylint:\n{f.read()}")
+          except:
+              pass
+          
+          try:
+              with open('flake8_report.txt', 'r') as f:
+                  reports.append(f"Flake8:\n{f.read()}")
+          except:
+              pass
+          
+          combined_report = "\n\n".join(reports[:2])  # Limit size
+          
+          prompt = f"""
+          Analyze these code quality reports and provide:
+          
+          {combined_report}
+          
+          1. Overall code quality score (0-100)
+          2. Critical issues to fix immediately
+          3. Improvement recommendations
+          4. Best practices to adopt
+          5. Positive aspects of the codebase
+          
+          Be constructive and specific.
+          """
+          
+          try:
+              analysis = ai_call(prompt, max_tokens=2500, task_type="code_quality")
+              
+              print("\n" + "="*80)
+              print("✨ CODE QUALITY ANALYSIS")
+              print("="*80)
+              print(analysis)
+              
+              with open('quality_analysis.md', 'w') as f:
+                  f.write(f"# Code Quality Analysis\n\n{analysis}\n")
+              
+              print("\n✅ Quality analysis complete")
+              
+          except Exception as e:
+              print(f"❌ Quality analysis failed: {e}")
+              sys.exit(1)
+          PYTHON_SCRIPT
+      
+      - name: "📤 Upload Reports"
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-reports
+          path: |
+            *_report.txt
+            *_report.json
+            quality_analysis.md
+          retention-days: 90
+
+  security-scanner:
+    name: "🔒 Security Scanner"
+    needs: initialize
+    if: contains(needs.initialize.outputs.workflows_to_run, '05-security-scanner')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: "📥 Checkout"
+        uses: actions/checkout@v4
+      
+      - name: "🐍 Setup Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: "📦 Install Security Tools"
+        run: |
+          pip install safety bandit pip-audit
+          pip install requests
+      
+      - name: "🔍 Run Security Scans"
+        continue-on-error: true
+        run: |
+          echo "Running safety check..."
+          safety check --json > safety_report.json 2>&1 || true
+          
+          echo "Running bandit..."
+          bandit -r . -f json -o bandit_security.json 2>&1 || true
+          
+          echo "Running pip-audit..."
+          pip-audit --format json > pip_audit.json 2>&1 || true
+      
+      - name: "🤖 AI Security Analysis"
+        env:
+          GROQAI_API_KEY: ${{ secrets.GROQAI_API_KEY }}
+          GROQ2_API_KEY: ${{ secrets.GROQ2_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINIAI_API_KEY: ${{ secrets.GEMINIAI_API_KEY }}
+          GEMINI2_API_KEY: ${{ secrets.GEMINI2_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          CODESTRAL_API_KEY: ${{ secrets.CODESTRAL_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          CHUTES_API_KEY: ${{ secrets.CHUTES_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+          GPTOSS_API_KEY: ${{ secrets.GPTOSS_API_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+        run: |
+          python3 <<'PYTHON_SCRIPT'
+          import sys
+          import json
+          sys.path.insert(0, '.github/scripts')
+          from ai_api_fallback import ai_call
+          
+          # Read security reports
+          security_data = []
+          
+          for report_file in ['safety_report.json', 'bandit_security.json', 'pip_audit.json']:
+              try:
+                  with open(report_file, 'r') as f:
+                      data = json.load(f)
+                      security_data.append({report_file: data})
+              except:
+                  pass
+          
+          prompt = f"""
+          Analyze these security scan results:
+          
+          {json.dumps(security_data, indent=2)[:5000]}
+          
+          Provide:
+          1. Critical vulnerabilities (immediate action required)
+          2. Medium/low priority issues
+          3. Remediation steps for each issue
+          4. Security best practices to implement
+          5. Overall security posture assessment
+          
+          Be specific about CVEs and versions.
+          """
+          
+          try:
+              analysis = ai_call(prompt, max_tokens=3000, task_type="security")
+              
+              print("\n" + "="*80)
+              print("🔒 SECURITY ANALYSIS")
+              print("="*80)
+              print(analysis)
+              
+              with open('security_analysis.md', 'w') as f:
+                  f.write(f"# Security Analysis\n\n{analysis}\n")
+              
+              print("\n✅ Security analysis complete")
+              
+          except Exception as e:
+              print(f"❌ Security analysis failed: {e}")
+              sys.exit(1)
+          PYTHON_SCRIPT
+      
+      - name: "📤 Upload Security Reports"
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            *_report.json
+            security_analysis.md
+          retention-days: 90
+
+  documentation:
+    name: "📚 Documentation Generator"
+    needs: initialize
+    if: contains(needs.initialize.outputs.workflows_to_run, '06-documentation')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: "📥 Checkout"
+        uses: actions/checkout@v4
+      
+      - name: "🐍 Setup Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: "📦 Install Dependencies"
+        run: |
+          pip install requests
+      
+      - name: "🤖 AI Documentation Generation"
+        env:
+          GROQAI_API_KEY: ${{ secrets.GROQAI_API_KEY }}
+          GROQ2_API_KEY: ${{ secrets.GROQ2_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINIAI_API_KEY: ${{ secrets.GEMINIAI_API_KEY }}
+          GEMINI2_API_KEY: ${{ secrets.GEMINI2_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          CODESTRAL_API_KEY: ${{ secrets.CODESTRAL_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          CHUTES_API_KEY: ${{ secrets.CHUTES_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+          GPTOSS_API_KEY: ${{ secrets.GPTOSS_API_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+        run: |
+          python3 <<'PYTHON_SCRIPT'
+          import sys
+          import os
+          sys.path.insert(0, '.github/scripts')
+          from ai_api_fallback import ai_call
+          
+          # Generate comprehensive documentation
+          prompt = """
+          Generate comprehensive documentation for this project including:
+          
+          1. Project Overview
+          2. Architecture Description
+          3. Setup Instructions
+          4. Usage Guide
+          5. API Reference (if applicable)
+          6. Contributing Guidelines
+          7. Troubleshooting Section
+          
+          Format as professional Markdown.
+          """
+          
+          try:
+              docs = ai_call(prompt, max_tokens=4000, task_type="documentation")
+              
+              os.makedirs('docs/generated', exist_ok=True)
+              
+              with open('docs/generated/PROJECT_DOCS.md', 'w') as f:
+                  f.write(docs)
+              
+              print("✅ Documentation generated successfully")
+              print("\n" + "="*80)
+              print(docs[:500] + "...")
+              
+          except Exception as e:
+              print(f"❌ Documentation generation failed: {e}")
+              sys.exit(1)
+          PYTHON_SCRIPT
+      
+      - name: "📤 Upload Documentation"
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-docs
+          path: docs/generated/
+          retention-days: 90
+
+  finalize:
+    name: "✅ Finalize Orchestration"
+    needs: [initialize, project-analysis, code-quality, security-scanner, documentation]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: "📥 Checkout"
+        uses: actions/checkout@v4
+      
+      - name: "📥 Download All Artifacts"
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+      
+      - name: "📊 Generate Orchestration Summary"
+        run: |
+          echo "# Orchestration Summary" > orchestration_summary.md
+          echo "" >> orchestration_summary.md
+          echo "**Run ID:** ${{ needs.initialize.outputs.run_id }}" >> orchestration_summary.md
+          echo "**Timestamp:** ${{ needs.initialize.outputs.timestamp }}" >> orchestration_summary.md
+          echo "**Mode:** ${{ needs.initialize.outputs.mode }}" >> orchestration_summary.md
+          echo "" >> orchestration_summary.md
+          
+          echo "## Job Status" >> orchestration_summary.md
+          echo "" >> orchestration_summary.md
+          echo "- Project Analysis: ${{ needs.project-analysis.result }}" >> orchestration_summary.md
+          echo "- Code Quality: ${{ needs.code-quality.result }}" >> orchestration_summary.md
+          echo "- Security Scanner: ${{ needs.security-scanner.result }}" >> orchestration_summary.md
+          echo "- Documentation: ${{ needs.documentation.result }}" >> orchestration_summary.md
+          echo "" >> orchestration_summary.md
+          
+          echo "## Artifacts Generated" >> orchestration_summary.md
+          echo "" >> orchestration_summary.md
+          ls -la artifacts/ >> orchestration_summary.md || true
+          
+          cat orchestration_summary.md
+      
+      - name: "✅ Complete"
+        run: |
+          echo "🎉 Orchestration complete!"
+          echo "📊 Summary available in artifacts"
+          echo "🔄 Run ID: ${{ needs.initialize.outputs.run_id }}"
