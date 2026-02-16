@@ -1,0 +1,41 @@
+# System files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+tmp/
+temp/
+
+# Keys and certificates
+*.key
+*.pem
+*.crt
+*.p12
+private/
+secrets/
+
+# WireGuard
+*.conf
+wg*.key
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Environment files
+.env
+.env.local
+.env.*.local
