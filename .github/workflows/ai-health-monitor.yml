@@ -19,6 +19,11 @@ jobs:
       with:
         python-version: '3.11'
     
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    
     - name: Test all providers
       id: health_test
       env:
