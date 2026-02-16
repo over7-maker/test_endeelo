@@ -1,41 +1,64 @@
-# System files
-.DS_Store
-Thumbs.db
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+PIPFILE.lock
 
-# Editor files
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
 *.swp
 *.swo
 *~
-.vscode/
-.idea/
+.DS_Store
 
-# Logs
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Artifacts
+artifacts/
 *.log
-logs/
-
-# Temporary files
 *.tmp
-tmp/
-temp/
+*.temp
 
-# Keys and certificates
-*.key
-*.pem
-*.crt
-*.p12
-private/
-secrets/
-
-# WireGuard
-*.conf
-wg*.key
-
-# Backup files
-*.bak
-*.backup
-*.old
-
-# Environment files
+# API Keys (safety)
 .env
 .env.local
-.env.*.local
+*.key
+*.pem
+secrets/
+
+# Reports
+*_report.txt
+*_report.json
+*_report.html
