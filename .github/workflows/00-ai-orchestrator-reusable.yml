@@ -1,0 +1,70 @@
+name: AI Orchestrator (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      task_type:
+        description: 'AI task type'
+        required: true
+        type: string
+      context:
+        description: 'Task context'
+        required: true
+        type: string
+      max_tokens:
+        description: 'Max response tokens'
+        required: false
+        type: number
+        default: 2000
+    outputs:
+      success:
+        description: 'Task succeeded'
+        value: ${{ jobs.orchestrate.outputs.success }}
+      response:
+        description: 'AI response'
+        value: ${{ jobs.orchestrate.outputs.response }}
+
+jobs:
+  orchestrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      success: ${{ steps.execute.outputs.success }}
+      response: ${{ steps.execute.outputs.response }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Execute AI Orchestrator
+        id: execute
+        env:
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          CODESTRAL_API_KEY: ${{ secrets.CODESTRAL_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINIAI_API_KEY: ${{ secrets.GEMINIAI_API_KEY }}
+          GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+          GPTOSS_API_KEY: ${{ secrets.GPTOSS_API_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          GROQAI_API_KEY: ${{ secrets.GROQAI_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+          GEMINI2_API_KEY: ${{ secrets.GEMINI2_API_KEY }}
+          GROQ2_API_KEY: ${{ secrets.GROQ2_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          CHUTES_API_KEY: ${{ secrets.CHUTES_API_KEY }}
+          TASK_TYPE: ${{ inputs.task_type }}
+          CONTEXT: ${{ inputs.context }}
+          MAX_TOKENS: ${{ inputs.max_tokens }}
+        run: |
+          python .github/scripts/universal_ai_orchestrator.py
