@@ -1,0 +1,225 @@
+name: "🧪 System Health & Integration Test"
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Test mode'
+        required: true
+        type: choice
+        options:
+          - quick
+          - full
+          - stress
+        default: 'quick'
+  schedule:
+    - cron: '0 */12 * * *'  # Every 12 hours
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  health-check:
+    name: "System Health Check"
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v4
+      
+      - name: "🐍 Setup Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: "📦 Install Dependencies"
+        run: |
+          pip install --upgrade pip
+          pip install requests pyyaml python-dateutil
+      
+      - name: "🔍 Test AI Fallback System"
+        env:
+          GROQAI_API_KEY: ${{ secrets.GROQAI_API_KEY }}
+          GROQ2_API_KEY: ${{ secrets.GROQ2_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINIAI_API_KEY: ${{ secrets.GEMINIAI_API_KEY }}
+          GEMINI2_API_KEY: ${{ secrets.GEMINI2_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          CODESTRAL_API_KEY: ${{ secrets.CODESTRAL_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          CHUTES_API_KEY: ${{ secrets.CHUTES_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+          GPTOSS_API_KEY: ${{ secrets.GPTOSS_API_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+        run: |
+          echo "🧪 Testing AI Fallback System..."
+          python3 .github/scripts/ai_api_fallback.py
+      
+      - name: "📊 Generate Health Report"
+        env:
+          GROQAI_API_KEY: ${{ secrets.GROQAI_API_KEY }}
+          GROQ2_API_KEY: ${{ secrets.GROQ2_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINIAI_API_KEY: ${{ secrets.GEMINIAI_API_KEY }}
+          GEMINI2_API_KEY: ${{ secrets.GEMINI2_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          CODESTRAL_API_KEY: ${{ secrets.CODESTRAL_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          CHUTES_API_KEY: ${{ secrets.CHUTES_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+          GPTOSS_API_KEY: ${{ secrets.GPTOSS_API_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+        run: |
+          python3 <<'PYTHON_SCRIPT'
+          import os
+          import sys
+          import json
+          from datetime import datetime
+          
+          sys.path.insert(0, '.github/scripts')
+          from ai_api_fallback import AIAPIFallback
+          
+          print("\n" + "="*80)
+          print("🏥 SYSTEM HEALTH CHECK")
+          print("="*80)
+          
+          # Initialize fallback system
+          fallback = AIAPIFallback()
+          
+          # Count available APIs
+          available_count = len(fallback.available_apis)
+          total_count = len(fallback.apis)
+          
+          print(f"\n📊 API Status:")
+          print(f"   Available: {available_count}/{total_count}")
+          print(f"   Success Rate Target: 100%")
+          
+          # Test basic functionality
+          print("\n🧪 Testing basic AI call...")
+          result = fallback.call_with_fallback(
+              prompt="Respond with exactly: 'System operational'",
+              system_prompt="You are a test responder. Follow instructions exactly.",
+              max_tokens=100,
+              task_type="health_check"
+          )
+          
+          # Generate report
+          report = {
+              'timestamp': datetime.utcnow().isoformat(),
+              'apis_available': available_count,
+              'apis_total': total_count,
+              'test_result': result['success'],
+              'api_used': result.get('api_used', 'none'),
+              'attempts': result.get('attempts', 0),
+              'stats': fallback.get_stats()
+          }
+          
+          # Save report
+          with open('health_report.json', 'w') as f:
+              json.dump(report, f, indent=2)
+          
+          # Generate markdown report
+          status_emoji = "✅" if result['success'] else "❌"
+          health_percentage = (available_count / total_count * 100)
+          
+          markdown_report = f"""# 🏥 System Health Report
+          
+**Timestamp**: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}
+
+## Status: {status_emoji} {'OPERATIONAL' if result['success'] else 'DEGRADED'}
+
+### API Availability
+- **Available APIs**: {available_count}/{total_count} ({health_percentage:.1f}%)
+- **Test Result**: {status_emoji} {'PASSED' if result['success'] else 'FAILED'}
+- **API Used**: {result.get('api_used', 'N/A')}
+- **Attempts**: {result.get('attempts', 0)}
+
+### Available Providers
+{chr(10).join(['- ' + api['name'] for api in fallback.available_apis])}
+
+### Performance Metrics
+```json
+{json.dumps(fallback.get_stats(), indent=2)}
+```
+
+---
+*Generated automatically by System Health Check workflow*
+"""
+          
+          with open('health_report.md', 'w') as f:
+              f.write(markdown_report)
+          
+          print("\n" + "="*80)
+          print(markdown_report)
+          print("="*80)
+          
+          # Exit with appropriate code
+          if result['success']:
+              print("\n✅ Health check PASSED")
+              sys.exit(0)
+          else:
+              print("\n❌ Health check FAILED")
+              sys.exit(1)
+          PYTHON_SCRIPT
+      
+      - name: "📤 Upload Health Report"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-health-report-${{ github.run_number }}
+          path: |
+            health_report.json
+            health_report.md
+          retention-days: 90
+      
+      - name: "💬 Post Health Report to Issue #2"
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            
+            try {
+              const report = fs.readFileSync('health_report.md', 'utf8');
+              
+              const body = `## 🔄 Automated Health Check\n\n${report}\n\n---\n*Run #${{ github.run_number }} - [View Details](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})*`;
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: 2,
+                body: body
+              });
+              
+              console.log('✅ Posted health report to Issue #2');
+            } catch (error) {
+              console.log(`⚠️ Could not post to issue: ${error.message}`);
+            }
+      
+      - name: "✅ Health Check Complete"
+        run: |
+          echo "=========================================="
+          echo "✅ System Health Check Complete!"
+          echo "=========================================="
+          echo ""
+          echo "📊 Summary:"
+          echo "   - Workflow: system-health-test.yml"
+          echo "   - Run: #${{ github.run_number }}"
+          echo "   - Status: Check artifacts for details"
+          echo ""
+          echo "🔗 View full report:"
+          echo "   https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "=========================================="
