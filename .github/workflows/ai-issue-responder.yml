@@ -1,66 +1,190 @@
-name: AI Issue Auto-Responder
+name: "AI Issue Auto-Responder"
 
 on:
   issues:
     types: [opened, reopened]
   issue_comment:
     types: [created]
+  workflow_dispatch:
 
 permissions:
   issues: write
+  contents: read
+
+env:
+  PYTHON_VERSION: '3.11'
 
 jobs:
   respond:
     runs-on: ubuntu-latest
-    if: github.event_name == 'issues' || (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@ai'))
+    if: github.event_name == 'issues' || github.event_name == 'workflow_dispatch' || (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@ai'))
     
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Get issue context
-      id: context
-      run: |
-        TITLE="${{ github.event.issue.title }}"
-        BODY="${{ github.event.issue.body }}"
-        COMMENT="${{ github.event.comment.body }}"
-        
-        echo "issue_text<<EOF" >> $GITHUB_OUTPUT
-        echo "Title: $TITLE" >> $GITHUB_OUTPUT
-        echo "Body: $BODY" >> $GITHUB_OUTPUT
-        if [ -n "$COMMENT" ]; then
-          echo "Latest Comment: $COMMENT" >> $GITHUB_OUTPUT
-        fi
-        echo "EOF" >> $GITHUB_OUTPUT
-    
-    - name: Generate AI response
-      id: ai_response
-      uses: ./.github/workflows/00-ai-orchestrator-reusable.yml
-      with:
-        task_type: "issue_response"
-        system_message: |
-          You are a helpful project assistant. Respond to GitHub issues politely and helpfully.
-          - If it's a bug report, acknowledge and ask for details
-          - If it's a feature request, show enthusiasm and ask clarifying questions
-          - If it's a question, provide a helpful answer
-          - Be concise but thorough
-        user_prompt: ${{ steps.context.outputs.issue_text }}
-        max_tokens: 1500
-    
-    - name: Post response
-      uses: actions/github-script@v7
-      if: steps.ai_response.outputs.success == 'true'
-      with:
-        script: |
-          const body = `${{ steps.ai_response.outputs.response }}
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v4
+      
+      - name: "🐍 Setup Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: "📦 Install Dependencies"
+        run: |
+          pip install --upgrade pip
+          pip install requests pyyaml python-dateutil
+      
+      - name: "📝 Get Issue Context"
+        id: context
+        run: |
+          ISSUE_NUMBER="${{ github.event.issue.number || '2' }}"
+          TITLE="${{ github.event.issue.title }}"
+          BODY="${{ github.event.issue.body }}"
+          COMMENT="${{ github.event.comment.body }}"
           
-          ---
+          echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
           
-          *🤖 Auto-response powered by ${{ steps.ai_response.outputs.provider }} (${${{ steps.ai_response.outputs.duration_ms }}}ms, ${${{ steps.ai_response.outputs.fallback_count }}} providers tried)*
-          `;
+          # Create context file for AI
+          cat > issue_context.txt <<EOF
+          Issue Title: $TITLE
           
-          await github.rest.issues.createComment({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: context.payload.issue.number,
-            body: body
-          });
+          Issue Body:
+          $BODY
+          
+          Latest Comment:
+          $COMMENT
+          EOF
+          
+          cat issue_context.txt
+      
+      - name: "🤖 Generate AI Response with 15-Tier Fallback"
+        id: ai_response
+        env:
+          GROQAI_API_KEY: ${{ secrets.GROQAI_API_KEY }}
+          GROQ2_API_KEY: ${{ secrets.GROQ2_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINIAI_API_KEY: ${{ secrets.GEMINIAI_API_KEY }}
+          GEMINI2_API_KEY: ${{ secrets.GEMINI2_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          CODESTRAL_API_KEY: ${{ secrets.CODESTRAL_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          CHUTES_API_KEY: ${{ secrets.CHUTES_API_KEY }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+          GPTOSS_API_KEY: ${{ secrets.GPTOSS_API_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+        run: |
+          python3 <<'PYTHON_SCRIPT'
+          import sys
+          import os
+          sys.path.insert(0, '.github/scripts')
+          from ai_api_fallback import ai_call
+          
+          # Read issue context
+          with open('issue_context.txt', 'r') as f:
+              issue_context = f.read()
+          
+          system_prompt = """
+          You are a helpful project assistant for the test_endeelo repository.
+          
+          Respond to GitHub issues politely and helpfully:
+          - If it's a bug report: Acknowledge, thank them, and ask for specific details (steps to reproduce, environment, logs)
+          - If it's a feature request: Show enthusiasm, explain value, and ask clarifying questions
+          - If it's a question: Provide a clear, helpful answer with examples
+          - If it's documentation-related: Point to relevant docs and offer to improve them
+          
+          Be concise but thorough. Use emojis appropriately. Be encouraging and supportive.
+          End with actionable next steps.
+          """
+          
+          user_prompt = f"""
+          Please respond to this GitHub issue:
+          
+          {issue_context}
+          
+          Provide a helpful, friendly response that addresses their concern.
+          """
+          
+          try:
+              response = ai_call(user_prompt, system_prompt, max_tokens=1500, task_type="issue_response")
+              
+              print("\n" + "="*80)
+              print("🤖 AI RESPONSE GENERATED")
+              print("="*80)
+              print(response)
+              print("="*80)
+              
+              # Save response to file
+              with open('ai_response.txt', 'w') as f:
+                  f.write(response)
+              
+              # Save success flag
+              with open('ai_success.txt', 'w') as f:
+                  f.write('true')
+              
+              print("\n✅ AI response generated successfully")
+              
+          except Exception as e:
+              print(f"❌ AI response generation failed: {e}")
+              with open('ai_success.txt', 'w') as f:
+                  f.write('false')
+              sys.exit(1)
+          PYTHON_SCRIPT
+      
+      - name: "💬 Post AI Response to Issue"
+        if: hashFiles('ai_success.txt') != ''
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            
+            // Check if AI succeeded
+            const success = fs.readFileSync('ai_success.txt', 'utf8').trim();
+            if (success !== 'true') {
+              console.log('❌ AI response generation failed, skipping comment');
+              return;
+            }
+            
+            // Read AI response
+            const aiResponse = fs.readFileSync('ai_response.txt', 'utf8');
+            
+            // Post comment
+            const issueNumber = ${{ steps.context.outputs.issue_number }};
+            
+            const body = `${aiResponse}
+
+---
+
+*🤖 Auto-response powered by Zero-Failure AI System with 15-tier fallback*
+*🔒 Always available, never fails - trying all AI providers until one succeeds*`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: body
+            });
+            
+            console.log(`✅ Posted AI response to issue #${issueNumber}`);
+      
+      - name: "🏷️ Add AI-Responded Label"
+        if: hashFiles('ai_success.txt') != ''
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issueNumber = ${{ steps.context.outputs.issue_number }};
+            
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: ['ai-responded']
+            });
+            
+            console.log(`✅ Added 'ai-responded' label to issue #${issueNumber}`);
