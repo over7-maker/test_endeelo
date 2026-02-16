@@ -41,7 +41,7 @@ jobs:
       - name: "📦 Install Dependencies"
         run: |
           pip install --upgrade pip
-          pip install requests pyyaml python-dateutil
+          pip install -r requirements.txt
       
       - name: "🔍 Test AI Fallback System"
         env:
