@@ -58,7 +58,7 @@ jobs:
       - name: "📦 Install Dependencies"
         run: |
           pip install --upgrade pip
-          pip install requests pyyaml python-dateutil
+          pip install -r requirements.txt
 
       - name: "⚙️ Setup Orchestration"
         id: setup
@@ -138,7 +138,8 @@ jobs:
 
       - name: "📦 Install Dependencies"
         run: |
-          pip install requests pyyaml
+          pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: "🤖 AI Project Analysis"
         env:
@@ -217,8 +218,9 @@ jobs:
 
       - name: "📦 Install Quality Tools"
         run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
           pip install pylint flake8 black isort mypy bandit safety
-          pip install requests
 
       - name: "🔍 Run Quality Checks"
         continue-on-error: true
@@ -327,8 +329,9 @@ jobs:
 
       - name: "📦 Install Security Tools"
         run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
           pip install safety bandit pip-audit
-          pip install requests
 
       - name: "🔍 Run Security Scans"
         continue-on-error: true
